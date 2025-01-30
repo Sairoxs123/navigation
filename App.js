@@ -1,14 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import MapView, { Marker } from 'react-native-maps';
-import { StyleSheet, View, Text } from 'react-native';
+import MapView, { Marker, Polyline } from 'react-native-maps';
+import { StyleSheet, View, Text, Alert } from 'react-native';
 import Slider from '@react-native-community/slider';
 import * as Location from 'expo-location';
-/*
-    <meta-data
-        android:name="com.google.android.geo.API_KEY"
-        android:value="AIzaSyCL8KMJhF04bm44_smMZC6Ke0rTRf0fbAo" />
-*/
+
 const App = () => {
+  const mapRef = useRef(null);
+  const [errmsg, setErrorMsg] = useState(null);
+  const [camera, setCamera] = useState({
+    center: {
+      latitude: 25.191582807810565,
+      longitude: 55.252884440124035,
+    },
+    pitch: 0,
+    heading: -55,
+    zoom: 18.25,
+  });
+  const [firstLocation, setFirstLocation] = useState(null);
+  const [secondLocation, setSecondLocation] = useState(null);
+  const [coordinates, setCoordinates] = useState([]);
+  const [location, setLocation] = useState(null);
+  const [distance, setDistance] = useState(null);
 
   function dijkstra(graph, source, target) {
     // Initialize distances and previous nodes for all nodes
@@ -64,19 +76,6 @@ const App = () => {
 
     return { distance: distance[target], path };
   }
-
-  const mapRef = useRef(null);
-  const [errmsg, setErrorMsg] = useState(null);
-  const [camera, setCamera] = useState({
-    center: {
-      latitude: 25.191582807810565,
-      longitude: 55.252884440124035,
-    },
-    pitch: 0,
-    heading: -55,
-    zoom: 18.25,
-  });
-  const [tappedLocation, setTappedLocation] = useState(null);
   const locations = {
     "Admin Department": { latitude: 25.191468733915016, longitude: 55.253087282180786 },
     "KG Play area": { latitude: 25.19106006937515, longitude: 55.25286767631769 },
@@ -165,7 +164,8 @@ const App = () => {
       }
 
       let location = await Location.getCurrentPositionAsync({});
-      console.log(location);
+      const { latitude, longitude } = location.coords;
+      setLocation({ latitude, longitude });
     })();
   }, []);
 
@@ -175,15 +175,62 @@ const App = () => {
     }
   }, [camera]);
 
+  useEffect(() => {
+    if (location && coordinates.length > 0) {
+      const updatedCoordinates = updatePolylineCoordinates(location, coordinates);
+      setCoordinates(updatedCoordinates);
+    }
+  }, [location]);
+
   const handlePitchChange = (value) => {
     setCamera({ ...camera, pitch: value });
   };
 
-  const handleMapPress = (event) => {
-    const { coordinate } = event.nativeEvent;
-    console.log(coordinate)
-    setTappedLocation(coordinate);
-    console.log("Tapped Coordinates:", coordinate);
+  const handleLocationPress = (name) => {
+    if (!firstLocation) {
+      setFirstLocation(name);
+      Alert.alert('First location selected. Please select the second location.');
+    } else if (!secondLocation) {
+      setSecondLocation(name);
+      Alert.alert('Second location selected.');
+      const { distance, path } = dijkstra(graph, firstLocation, name);
+      setCoordinates(path.map((name) => locations[name]));
+      setDistance(Math.round(distance));
+    } else {
+      setFirstLocation(null);
+      setSecondLocation(null);
+    }
+  };
+
+  const updatePolylineCoordinates = (userLocation, polylineCoordinates) => {
+    // Find the closest point on the polyline to the user's current location
+    let closestIndex = 0;
+    let minDistance = Infinity;
+    polylineCoordinates.forEach((coordinate, index) => {
+      const distance = getDistance(userLocation, coordinate);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestIndex = index;
+      }
+    });
+
+    // Return the updated polyline coordinates starting from the closest point
+    return polylineCoordinates.slice(closestIndex);
+  };
+
+  const getDistance = (coord1, coord2) => {
+    const toRadians = (degrees) => degrees * (Math.PI / 180);
+    const earthRadiusMeters = 6371000;
+
+    const deltaLat = toRadians(coord2.latitude - coord1.latitude);
+    const deltaLng = toRadians(coord2.longitude - coord1.longitude);
+
+    const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+      Math.cos(toRadians(coord1.latitude)) * Math.cos(toRadians(coord2.latitude)) *
+      Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return earthRadiusMeters * c;
   };
 
   return (
@@ -200,18 +247,18 @@ const App = () => {
           initialCamera={camera}
           rotateEnabled={true}
           pitchEnabled={true}
-          onPress={handleMapPress}
           mapType="satellite"
         >
           {Object.entries(locations).map(([name, coordinate]) => (
             <Marker
-              key={name} // Use the name as the key
+              key={name}
               coordinate={coordinate}
               title={name}
               pinColor='blue'
+              onPress={() => handleLocationPress(name)}
             />
           ))}
-          {tappedLocation && <Marker coordinate={tappedLocation} title="Tapped Location" />}
+          {secondLocation && <Polyline coordinates={coordinates} strokeWidth={5} lineDashPattern={[5, 5]} strokeColor='orange' />}
         </MapView>
         <Slider
           style={{
@@ -230,14 +277,12 @@ const App = () => {
           maximumTrackTintColor="#AAAAAA"
           thumbTintColor="#FFFFFF"
         />
-        {tappedLocation && (
-          <View style={styles.coordinatesContainer}>
-            <Text>Latitude: {tappedLocation.latitude}</Text>
-            <Text>Longitude: {tappedLocation.longitude}</Text>
+        {secondLocation && (
+          <View style={styles.distanceContainer}>
+            <Text>Distance: {distance}m</Text>
           </View>
         )}
       </View>
-
   );
 };
 
@@ -245,7 +290,7 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
   },
-  coordinatesContainer: {
+  distanceContainer: {
     position: 'absolute',
     bottom: 20,
     left: 20,

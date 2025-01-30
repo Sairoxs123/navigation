@@ -44,4 +44,43 @@ for (const startPoint in locations) {
     }
 }
 
-console.log(JSON.stringify(graph, null, 2));
+//console.log(JSON.stringify(graph, null, 2));
+
+function isUserWithinRadius(userLat, userLng, targetLat, targetLng, radiusMeters) {
+    // Convert latitude and longitude to radians
+    const userLatRad = toRadians(userLat);
+    const userLngRad = toRadians(userLng);
+    const targetLatRad = toRadians(targetLat);
+    const targetLngRad = toRadians(targetLng);
+
+    // Haversine formula
+    const earthRadiusMeters = 6371000; // Earth's radius in meters
+    const deltaLat = targetLatRad - userLatRad;
+    const deltaLng = targetLngRad - userLngRad;
+
+    const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+        Math.cos(userLatRad) * Math.cos(targetLatRad) *
+        Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    const distance = earthRadiusMeters * c;
+
+    return distance <= radiusMeters;
+}
+
+function toRadians(degrees) {
+    return degrees * Math.PI / 180;
+}
+
+const targetLat = 37.7749; // Example target latitude
+const targetLng = -122.4194; // Example target longitude
+const radius = 3; // 3 meters
+
+// Test cases
+const user1Lat = 37.7748;
+const user1Lng = -122.4193;
+const user2Lat = 37.7755;
+const user2Lng = -122.4200;
+
+console.log(`User 1 is within radius: ${isUserWithinRadius(user1Lat, user1Lng, targetLat, targetLng, radius)}`); // Output: true
+console.log(`User 2 is within radius: ${isUserWithinRadius(user2Lat, user2Lng, targetLat, targetLng, radius)}`); // Output: false
